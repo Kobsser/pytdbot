@@ -1021,7 +1021,7 @@ class Client(Decorators, Methods):
             first_name = await self.__ainput("Enter your first name: ")
             last_name = await self.__ainput("Enter your last name: ")
 
-            res = await self.registerUser(first_name=first_name, last_name=last_name)
+            res = await self.registerUser(first_name=first_name, last_name=last_name, disable_notification=True)
             if res.is_error:
                 print(res["message"])
             else:

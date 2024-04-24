@@ -34,6 +34,8 @@ class TDLibFunctions:
         device_model: str,
         system_version: str,
         application_version: str,
+        enable_storage_optimizer: str,
+        ignore_file_names: str
     ) -> Result:
         """Sets the parameters for TDLib initialization\. Works only when the current authorization state is authorizationStateWaitTdlibParameters
 
@@ -80,6 +82,12 @@ class TDLibFunctions:
             application_version (``str``):
                 Application version; must be non\-empty
 
+            enable_storage_optimizer (``bool``):
+                If set to true, old files will automatically be deleted. Default is ``True``
+
+            ignore_file_names (``bool``):
+                If set to true, original file names will be ignored. Otherwise, downloaded files will be saved under names as close as possible to the original name. Default is ``False``
+
 
         Returns:
             :class:`~pytdbot.types.Result` (``Ok``)
@@ -101,6 +109,8 @@ class TDLibFunctions:
             "device_model": device_model,
             "system_version": system_version,
             "application_version": application_version,
+            "enable_storage_optimizer": enable_storage_optimizer,
+            "ignore_file_names": ignore_file_names
         }
 
         return await self.invoke(data)
