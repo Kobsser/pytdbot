@@ -122,6 +122,8 @@ class Client(Decorators, Methods):
         use_message_database: bool = True,
         enable_storage_optimizer: bool = True,
         ignore_file_names: bool = False,
+        application_version: str = None,
+        system_version: str = None,
         loop: asyncio.AbstractEventLoop = None,
         options: dict = None,
         sleep_threshold: int = None,
@@ -151,6 +153,8 @@ class Client(Decorators, Methods):
         self.use_message_database = use_message_database
         self.enable_storage_optimizer = enable_storage_optimizer
         self.ignore_file_names = ignore_file_names
+        self.application_version = application_version
+        self.system_version = system_version
         self.td_options = options
         self.sleep_threshold = (
             sleep_threshold if isinstance(sleep_threshold, int) else 0
@@ -769,12 +773,12 @@ class Client(Decorators, Methods):
             api_id=self.__api_id,
             api_hash=self.__api_hash,
             system_language_code=self.system_language_code,
-            device_model=f"{python_implementation()} {python_version()}",
+            device_model=f"{python_implementation()} {python_version()}" if self.device_model is None else self.device_model,
             use_file_database=self.use_file_database,
             use_chat_info_database=self.use_chat_info_database,
             use_message_database=self.use_message_database,
             use_secret_chats=False,
-            system_version=None,
+            system_version=self.system_version,
             enable_storage_optimizer=self.enable_storage_optimizer,
             ignore_file_names=self.ignore_file_names,
             files_directory=self.files_directory,
@@ -782,7 +786,7 @@ class Client(Decorators, Methods):
                 "utf-8"
             ),
             database_directory=join_path(self.files_directory, "database"),
-            application_version=f"Pytdbot {pytdbot.__version__}",
+            application_version=f"Pytdbot {pytdbot.__version__}" if self.application_version is None else self.application_version,
         )
         if res.is_error:
             raise AuthorizationError(res.result["message"])
