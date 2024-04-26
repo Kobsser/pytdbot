@@ -1,28 +1,23 @@
 import signal
 import pytdbot
 import asyncio
-
 from platform import python_implementation, python_version
 from os.path import join as join_path
 from pathlib import Path
 from getpass import getpass
 from importlib import import_module
-
 from typing import Callable, Union
 from logging import getLogger, DEBUG
 from base64 import b64encode
 from deepdiff import DeepDiff
-from concurrent.futures import ThreadPoolExecutor
 from threading import current_thread, main_thread
 from json import dumps
-
-from .tdjson import TdJson
+from .tdjson import TDJsonClient, TDLibLogVerbosity
 from .handlers import Decorators, Handler
 from .methods import Methods
 from .types import Plugins, Result, LogStream, Update
 from .filters import Filter
 from .exception import StopHandlers, AuthorizationError
-
 
 logger = getLogger(__name__)
 
@@ -104,32 +99,33 @@ class Client(Decorators, Methods):
     """
 
     def __init__(
-        self,
-        api_id: int,
-        api_hash: str,
-        database_encryption_key: Union[str, bytes],
-        files_directory: str,
-        token: str = None,
-        lib_path: str = None,
-        plugins: Plugins = None,
-        update_class: Update = Update,
-        default_parse_mode: str = None,
-        system_language_code: str = "en",
-        device_model: str = None,
-        use_test_dc: bool = False,
-        use_file_database: bool = True,
-        use_chat_info_database: bool = True,
-        use_message_database: bool = True,
-        enable_storage_optimizer: bool = True,
-        ignore_file_names: bool = False,
-        application_version: str = None,
-        system_version: str = None,
-        loop: asyncio.AbstractEventLoop = None,
-        options: dict = None,
-        sleep_threshold: int = None,
-        workers: int = 5,
-        td_verbosity: int = 2,
-        td_log: LogStream = None,
+            self,
+            api_id: int,
+            api_hash: str,
+            database_encryption_key: Union[str, bytes],
+            files_directory: str,
+            token: str = None,
+            lib_path: str = None,
+            plugins: Plugins = None,
+            update_class: Update = Update,
+            default_parse_mode: str = None,
+            system_language_code: str = "en",
+            device_model: str = None,
+            use_test_dc: bool = False,
+            use_file_database: bool = True,
+            use_chat_info_database: bool = True,
+            use_message_database: bool = True,
+            enable_storage_optimizer: bool = True,
+            ignore_file_names: bool = False,
+            application_version: str = None,
+            system_version: str = None,
+            loop: asyncio.AbstractEventLoop = None,
+            options: dict = None,
+            sleep_threshold: int = None,
+            workers: int = 5,
+            td_verbosity: int = TDLibLogVerbosity.ERROR,
+            td_json=None,
+            td_log: LogStream = None,
     ) -> None:
         self.__api_id = api_id
         self.__api_hash = api_hash
@@ -142,7 +138,7 @@ class Client(Decorators, Methods):
         self.default_parse_mode = (
             default_parse_mode
             if isinstance(default_parse_mode, str)
-            and default_parse_mode in {"markdown", "markdownv2", "html"}
+               and default_parse_mode in {"markdown", "markdownv2", "html"}
             else None
         )
         self.system_language_code = system_language_code
@@ -162,6 +158,7 @@ class Client(Decorators, Methods):
         self.workers = workers
         self.queue = asyncio.Queue()
         self.td_verbosity = td_verbosity
+        self.td_json = td_json
         self.connection_state: str = None
         self.is_running = None
         self.me = None
@@ -172,7 +169,7 @@ class Client(Decorators, Methods):
 
         self._handlers = {"initializer": [], "finalizer": []}
         self._results = {}
-        self._tdjson = TdJson(lib_path, td_verbosity)
+        self.tdjson_client = TDJsonClient.create(lib_path, td_verbosity, td_json)
         self._retry_after_prefex = "Too Many Requests: retry after "
         self._workers_tasks = None
         self.__authorization_state = None
@@ -199,7 +196,7 @@ class Client(Decorators, Methods):
             self._load_plugins()
 
         if isinstance(td_log, LogStream):
-            self._tdjson.execute(
+            self.tdjson_client.execute(
                 {"@type": "setLogStream", "log_stream": td_log.to_dict()}
             )
 
@@ -280,11 +277,11 @@ class Client(Decorators, Methods):
         )
 
     def add_handler(
-        self,
-        update_type: str,
-        func: Callable,
-        filters: pytdbot.filters.Filter = None,
-        position: int = None,
+            self,
+            update_type: str,
+            func: Callable,
+            filters: pytdbot.filters.Filter = None,
+            position: int = None,
     ) -> None:
         """Add an update handler
 
@@ -346,8 +343,8 @@ class Client(Decorators, Methods):
         return False
 
     async def invoke(
-        self,
-        request: dict,
+            self,
+            request: dict,
     ) -> Result:
         """Invoke a new TDLib request
 
@@ -373,11 +370,11 @@ class Client(Decorators, Methods):
         self._results[result.id] = result
 
         if (
-            logger.root.level >= DEBUG
+                logger.root.level >= DEBUG
         ):  # dumping all requests may create performance issues
             logger.debug(f"Sending: {dumps(result.request, indent=4)}")
 
-        self.__send(result.request)
+        await self.__send(result.request)
         await result
 
         if result.is_error:
@@ -393,12 +390,12 @@ class Client(Decorators, Methods):
 
                     await asyncio.sleep(retry_after)
                     self._results[result.id] = result
-                    self.__send(result.request)
+                    await self.__send(result.request)
                     await result
             elif not self.use_message_database and (
-                result["code"] == 400
-                and result["message"] == "Chat not found"
-                and "chat_id" in result.request
+                    result["code"] == 400
+                    and result["message"] == "Chat not found"
+                    and "chat_id" in result.request
             ):
                 chat_id = result.request["chat_id"]
 
@@ -421,7 +418,7 @@ class Client(Decorators, Methods):
                     # repeat the first request
                     result.reset()
                     self._results[result.id] = result
-                    self.__send(result.request)
+                    await self.__send(result.request)
                     await result
                 else:
                     logger.error(f"Couldn't load chat {chat_id}")
@@ -496,8 +493,8 @@ class Client(Decorators, Methods):
             :py:class:`bool`: ``True`` on success
         """
         if (
-            self.is_running is False
-            and self.authorization_state == "authorizationStateClosed"
+                self.is_running is False
+                and self.authorization_state == "authorizationStateClosed"
         ):
             raise RuntimeError("Instance is not running")
 
@@ -516,8 +513,8 @@ class Client(Decorators, Methods):
 
             return True
 
-    def __send(self, request: dict) -> None:
-        return self._tdjson.send(
+    async def __send(self, request: dict) -> None:
+        return await self.tdjson_client.send(
             request
         )  # tdjson.send is non-blocking method, So we don't need run_in_executor. This improves performance
 
@@ -527,7 +524,7 @@ class Client(Decorators, Methods):
         elif not isinstance(self.__api_hash, str):
             raise TypeError("api_hash must be str")
         elif not isinstance(self.__database_encryption_key, str) and not isinstance(
-            self.__database_encryption_key, bytes
+                self.__database_encryption_key, bytes
         ):
             raise TypeError("database_encryption_key must be str or bytes")
         elif not isinstance(self.files_directory, str):
@@ -574,7 +571,7 @@ class Client(Decorators, Methods):
                 path
                 for path in plugin_paths
                 if ".".join(path.parent.parts + (path.stem,))
-                not in self.plugins.exclude
+                   not in self.plugins.exclude
             ]
 
         for path in plugin_paths:
@@ -592,8 +589,8 @@ class Client(Decorators, Methods):
                 obj._handler
                 for obj in vars(module).values()
                 if hasattr(obj, "_handler")
-                and isinstance(obj._handler, Handler)
-                and obj._handler not in handlers_to_load
+                   and isinstance(obj._handler, Handler)
+                   and obj._handler not in handlers_to_load
             ]
 
             for handler in handlers_to_load:
@@ -629,30 +626,26 @@ class Client(Decorators, Methods):
             return is_coro
 
     async def __listen_loop(self):
-        with ThreadPoolExecutor(1, "pytdbot_listener") as thread:
-            try:
-                self.is_running = True
-                logger.info("Listening to updates...")
+        try:
+            self.is_running = True
+            logger.info("Listening to updates...")
 
-                while self.is_running:
-                    update = await self.loop.run_in_executor(
-                        thread, self._tdjson.receive, 100000.0  # Seconds
-                    )
-                    if update is None:
-                        continue
-                    self.loop.create_task(self._process_update(update))
+            async for update in self.tdjson_client.receive():
+                if not bool(update):
+                    continue
 
-            except Exception:
-                logger.exception("Exception in __listen_loop")
-            finally:
-                self.is_running = False
+                self.loop.create_task(self._process_update(update))
+        except Exception:
+            logger.exception("Exception in __listen_loop")
+        finally:
+            self.is_running = False
 
     async def _process_update(self, update):
         del update["@client_id"]
 
         if "@extra" in update:
             if (
-                logger.root.level >= DEBUG
+                    logger.root.level >= DEBUG
             ):  # dumping all results may create performance issues
                 logger.debug(f"Received: {dumps(update, indent=4)}")
             if update["@extra"]["id"] in self._results:
@@ -726,7 +719,7 @@ class Client(Decorators, Methods):
 
     async def _handle_update(self, update):
         if (
-            logger.root.level >= DEBUG
+                logger.root.level >= DEBUG
         ):  # dumping all updates can create performance issues
             logger.debug(
                 f"Received: {dumps(update, indent=4)}",
@@ -735,9 +728,9 @@ class Client(Decorators, Methods):
         if update["@type"] in self._handlers:
             update = self.update_class(self, update)
             if (
-                update["@type"] == "updateNewMessage"
-                and update["message"]["is_outgoing"]
-                and "sending_state" in update["message"]
+                    update["@type"] == "updateNewMessage"
+                    and update["message"]["is_outgoing"]
+                    and "sending_state" in update["message"]
             ):
                 return
 
@@ -812,7 +805,7 @@ class Client(Decorators, Methods):
             else:
                 raise ValueError(f"Option {k} has unsupported type {v_type}")
 
-            self.__send(
+            await self.__send(
                 {
                     "@type": "setOption",
                     "name": k,
@@ -848,13 +841,13 @@ class Client(Decorators, Methods):
                 elif self.authorization_state == "authorizationStateWaitRegistration":
                     await self.__handle_authorization_state_wait_registration()
                 elif (
-                    old_authorization_state != "authorizationStateWaitPassword"
-                    and self.authorization_state == "authorizationStateWaitPassword"
+                        old_authorization_state != "authorizationStateWaitPassword"
+                        and self.authorization_state == "authorizationStateWaitPassword"
                 ):
                     await self.__handle_authorization_state_wait_password()
                 elif (
-                    self.authorization_state == "authorizationStateClosed"
-                    and self.__is_closing is False
+                        self.authorization_state == "authorizationStateClosed"
+                        and self.__is_closing is False
                 ):
                     self.__stop_client()
 

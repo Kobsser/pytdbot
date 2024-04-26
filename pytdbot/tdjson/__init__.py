@@ -1,3 +1,3 @@
-__all__ = ("TdJson",)
+__all__ = ("TDJsonClient", "TDLibLogVerbosity", "TDJson")
 
-from .tdjson import TdJson
+from .tdjson import TDJsonClient, TDLibLogVerbosity, TDJson

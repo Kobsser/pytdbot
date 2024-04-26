@@ -1,5 +1,5 @@
 from . import types, utils, filters, exception
-from .tdjson import TdJson
+from .tdjson import TDJsonClient
 from .client import Client
 
 __version__ = "0.8.8dev0"
