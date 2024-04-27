@@ -216,6 +216,11 @@ class Client(Decorators, Methods):
         """Current authorization state"""
         return self.__authorization_state
 
+    @property
+    def authorization(self) -> dict:
+        """Current authorization object"""
+        return self.__authorization
+
     async def start(self, login: bool = True) -> None:
         """Start pytdbot client
 
