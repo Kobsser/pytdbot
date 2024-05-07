@@ -196,9 +196,9 @@ class Client(Decorators, Methods):
             self._load_plugins()
 
         if isinstance(td_log, LogStream):
-            self.tdjson_client.execute(
+            self.loop.run_until_complete(self.tdjson_client.execute(
                 {"@type": "setLogStream", "log_stream": td_log.to_dict()}
-            )
+            ))
 
     async def __aenter__(self):
         await self.start()
